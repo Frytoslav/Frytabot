@@ -39,6 +39,7 @@ A simple Discord bot that plays YouTube music with a per-server queue.
 
 - `/play query:<link or search text>` - joins your voice channel and adds the found track to the queue.
 - `/queue` - shows the currently playing track and up to 10 queued tracks.
+- `/volume level:<0-200>` - changes playback volume for the current and next tracks.
 - `/skip` - skips the current track.
 - `/skipto position:<number>` - skips to a queued track by position.
 - `/stop` - stops playback, clears the queue, and disconnects the bot.

@@ -61,6 +61,20 @@ const commands = [
     description: "Shows the current music queue.",
   },
   {
+    name: "volume",
+    description: "Changes playback volume.",
+    options: [
+      {
+        name: "level",
+        description: "Volume percentage from 0 to 200.",
+        type: ApplicationCommandOptionType.Integer,
+        required: true,
+        min_value: 0,
+        max_value: 200,
+      },
+    ],
+  },
+  {
     name: "stop",
     description: "Stops playback and clears the queue.",
   },
@@ -126,6 +140,7 @@ function getOrCreateSession(interaction, voiceChannel) {
       current: null,
       player,
       queue: [],
+      volume: 1,
       voiceChannelId: voiceChannel.id,
     };
     sessions.set(guildId, session);
@@ -172,8 +187,11 @@ async function playNext(guildId) {
   try {
     const stream = await play.stream(track.url);
     const resource = createAudioResource(stream.stream, {
+      inlineVolume: true,
       inputType: stream.type,
     });
+
+    resource.volume.setVolume(session.volume);
 
     await entersState(session.connection, VoiceConnectionStatus.Ready, 20_000);
     session.player.play(resource);
@@ -237,6 +255,16 @@ function isInSameVoiceChannel(interaction, session) {
   return interaction.member?.voice?.channelId === session.voiceChannelId;
 }
 
+function setSessionVolume(session, level) {
+  session.volume = level / 100;
+
+  const resource = session.player.state.resource;
+
+  if (resource?.volume) {
+    resource.volume.setVolume(session.volume);
+  }
+}
+
 function attachPlayerHandlers(session, guildId) {
   session.player.removeAllListeners(AudioPlayerStatus.Idle);
   session.player.on(AudioPlayerStatus.Idle, () => {
@@ -258,6 +286,32 @@ client.on("interactionCreate", async (interaction) => {
     const session = getSessionForInteraction(interaction);
 
     await interaction.reply(session ? formatQueue(session) : "Queue is empty.");
+    return;
+  }
+
+  if (interaction.commandName === "volume") {
+    const session = getSessionForInteraction(interaction);
+
+    if (!session) {
+      await interaction.reply({
+        content: "Nothing is playing right now.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (!isInSameVoiceChannel(interaction, session)) {
+      await interaction.reply({
+        content: "Join my voice channel first.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const level = interaction.options.getInteger("level", true);
+
+    setSessionVolume(session, level);
+    await interaction.reply(`Volume set to **${level}%**.`);
     return;
   }
 
