@@ -44,3 +44,12 @@ A simple Discord bot that plays YouTube music with a per-server queue.
 - `/skip` - skips the current track.
 - `/skipto position:<number>` - skips to a queued track by position.
 - `/stop` - stops playback, clears the queue, and disconnects the bot.
+
+## Project structure
+
+- `src/index.js` - starts the Discord client and wires events.
+- `src/config.js` - reads and validates environment variables.
+- `src/commands/definitions.js` - contains slash command definitions registered with Discord.
+- `src/commands/handlers.js` - routes interactions to feature handlers.
+- `src/features/dice.js` - handles dice notation and roll responses.
+- `src/features/music/` - contains music playback, queue state, and message formatting.
