@@ -40,6 +40,18 @@ const commands = [
     ],
   },
   {
+    name: "r",
+    description: "Rolls dice using NdM notation.",
+    options: [
+      {
+        name: "dice",
+        description: "Dice notation, for example 2d6.",
+        type: ApplicationCommandOptionType.String,
+        required: true,
+      },
+    ],
+  },
+  {
     name: "skip",
     description: "Skips the current track.",
   },
@@ -84,6 +96,8 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
 });
 
+const MAX_DICE_COUNT = 100;
+const MAX_DICE_SIDES = 1_000;
 const sessions = new Map();
 
 async function registerCommands() {
@@ -115,6 +129,51 @@ async function resolveTrack(query) {
     title: results[0].title,
     url: results[0].url,
   };
+}
+
+function rollDice(notation) {
+  const match = notation.trim().toLowerCase().match(/^(\d+)d(\d+)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const count = Number(match[1]);
+  const sides = Number(match[2]);
+
+  if (
+    !Number.isSafeInteger(count)
+    || !Number.isSafeInteger(sides)
+    || count < 1
+    || sides < 2
+    || count > MAX_DICE_COUNT
+    || sides > MAX_DICE_SIDES
+  ) {
+    return null;
+  }
+
+  const results = Array.from(
+    { length: count },
+    () => Math.floor(Math.random() * sides) + 1,
+  );
+  const total = results.reduce((sum, result) => sum + result, 0);
+
+  return {
+    count,
+    results,
+    sides,
+    total,
+  };
+}
+
+function formatDiceRoll(roll) {
+  const visibleResults = roll.results.slice(0, 50).join(", ");
+  const hiddenCount = roll.results.length - 50;
+  const resultText = hiddenCount > 0
+    ? `${visibleResults}, ...and ${hiddenCount} more`
+    : visibleResults;
+
+  return `Rolled **${roll.count}d${roll.sides}**: ${resultText}\nTotal: **${roll.total}**`;
 }
 
 function getOrCreateSession(interaction, voiceChannel) {
@@ -286,6 +345,22 @@ client.on("interactionCreate", async (interaction) => {
     const session = getSessionForInteraction(interaction);
 
     await interaction.reply(session ? formatQueue(session) : "Queue is empty.");
+    return;
+  }
+
+  if (interaction.commandName === "r") {
+    const notation = interaction.options.getString("dice", true);
+    const roll = rollDice(notation);
+
+    if (!roll) {
+      await interaction.reply({
+        content: `Use dice notation like \`2d6\`. Limits: ${MAX_DICE_COUNT} dice, ${MAX_DICE_SIDES} sides.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.reply(formatDiceRoll(roll));
     return;
   }
 
