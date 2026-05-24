@@ -29,7 +29,7 @@ if (!DISCORD_TOKEN || !CLIENT_ID) {
 const commands = [
   {
     name: "play",
-    description: "Plays music in a voice channel.",
+    description: "Adds music to the queue.",
     options: [
       {
         name: "query",
@@ -38,6 +38,31 @@ const commands = [
         required: true,
       },
     ],
+  },
+  {
+    name: "skip",
+    description: "Skips the current track.",
+  },
+  {
+    name: "skipto",
+    description: "Skips to a track from the queue.",
+    options: [
+      {
+        name: "position",
+        description: "Queue position to skip to.",
+        type: ApplicationCommandOptionType.Integer,
+        required: true,
+        min_value: 1,
+      },
+    ],
+  },
+  {
+    name: "queue",
+    description: "Shows the current music queue.",
+  },
+  {
+    name: "stop",
+    description: "Stops playback and clears the queue.",
   },
 ];
 
@@ -78,13 +103,8 @@ async function resolveTrack(query) {
   };
 }
 
-async function playTrack(interaction, track, voiceChannel) {
+function getOrCreateSession(interaction, voiceChannel) {
   const guildId = interaction.guildId;
-  const stream = await play.stream(track.url);
-  const resource = createAudioResource(stream.stream, {
-    inputType: stream.type,
-  });
-
   let session = sessions.get(guildId);
 
   if (!session) {
@@ -101,20 +121,127 @@ async function playTrack(interaction, track, voiceChannel) {
     });
 
     connection.subscribe(player);
-    session = { connection, player };
+    session = {
+      connection,
+      current: null,
+      player,
+      queue: [],
+      voiceChannelId: voiceChannel.id,
+    };
     sessions.set(guildId, session);
+    attachPlayerHandlers(session, guildId);
 
     connection.on(VoiceConnectionStatus.Disconnected, () => {
       sessions.delete(guildId);
     });
   }
 
-  await entersState(session.connection, VoiceConnectionStatus.Ready, 20_000);
-  session.player.play(resource);
+  return session;
+}
 
-  session.player.once(AudioPlayerStatus.Idle, () => {
-    getVoiceConnection(guildId)?.destroy();
+function destroySession(guildId) {
+  const session = sessions.get(guildId);
+
+  if (session) {
+    session.queue = [];
+    session.current = null;
+    session.connection.destroy();
     sessions.delete(guildId);
+    return;
+  }
+
+  getVoiceConnection(guildId)?.destroy();
+}
+
+async function playNext(guildId) {
+  const session = sessions.get(guildId);
+
+  if (!session) {
+    return;
+  }
+
+  const track = session.queue.shift();
+
+  if (!track) {
+    destroySession(guildId);
+    return;
+  }
+
+  session.current = track;
+
+  try {
+    const stream = await play.stream(track.url);
+    const resource = createAudioResource(stream.stream, {
+      inputType: stream.type,
+    });
+
+    await entersState(session.connection, VoiceConnectionStatus.Ready, 20_000);
+    session.player.play(resource);
+  } catch (error) {
+    console.error(`Could not play "${track.title}".`, error);
+    return playNext(guildId);
+  }
+}
+
+async function addTrack(interaction, track, voiceChannel) {
+  const guildId = interaction.guildId;
+  const session = getOrCreateSession(interaction, voiceChannel);
+  const wasIdle = session.player.state.status === AudioPlayerStatus.Idle && !session.current;
+
+  session.queue.push(track);
+
+  if (wasIdle) {
+    await playNext(guildId);
+  }
+
+  return {
+    position: session.queue.length,
+    started: wasIdle,
+  };
+}
+
+function formatQueue(session) {
+  const lines = [];
+
+  if (session.current) {
+    lines.push(`Now playing: **${session.current.title}**`);
+  }
+
+  if (!session.queue.length) {
+    lines.push("Queue is empty.");
+    return lines.join("\n");
+  }
+
+  lines.push(
+    ...session.queue.slice(0, 10).map((track, index) => `${index + 1}. ${track.title}`),
+  );
+
+  if (session.queue.length > 10) {
+    lines.push(`...and ${session.queue.length - 10} more.`);
+  }
+
+  return lines.join("\n");
+}
+
+function getSessionForInteraction(interaction) {
+  const session = sessions.get(interaction.guildId);
+
+  if (!session || (!session.current && !session.queue.length)) {
+    return null;
+  }
+
+  return session;
+}
+
+function isInSameVoiceChannel(interaction, session) {
+  return interaction.member?.voice?.channelId === session.voiceChannelId;
+}
+
+function attachPlayerHandlers(session, guildId) {
+  session.player.removeAllListeners(AudioPlayerStatus.Idle);
+  session.player.on(AudioPlayerStatus.Idle, () => {
+    session.current = null;
+    playNext(guildId);
   });
 }
 
@@ -123,7 +250,111 @@ client.once("ready", async () => {
 });
 
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand() || interaction.commandName !== "play") {
+  if (!interaction.isChatInputCommand()) {
+    return;
+  }
+
+  if (interaction.commandName === "queue") {
+    const session = getSessionForInteraction(interaction);
+
+    await interaction.reply(session ? formatQueue(session) : "Queue is empty.");
+    return;
+  }
+
+  if (interaction.commandName === "stop") {
+    const session = getSessionForInteraction(interaction);
+
+    if (!session) {
+      await interaction.reply({
+        content: "Nothing is playing right now.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (!isInSameVoiceChannel(interaction, session)) {
+      await interaction.reply({
+        content: "Join my voice channel first.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    destroySession(interaction.guildId);
+    await interaction.reply("Stopped playback and cleared the queue.");
+    return;
+  }
+
+  if (interaction.commandName === "skip") {
+    const session = getSessionForInteraction(interaction);
+
+    if (!session) {
+      await interaction.reply({
+        content: "Nothing is playing right now.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (!isInSameVoiceChannel(interaction, session)) {
+      await interaction.reply({
+        content: "Join my voice channel first.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const skipped = session.current?.title;
+    session.player.stop();
+    await interaction.reply(skipped ? `Skipped: **${skipped}**` : "Skipped.");
+    return;
+  }
+
+  if (interaction.commandName === "skipto") {
+    const session = getSessionForInteraction(interaction);
+
+    if (!session) {
+      await interaction.reply({
+        content: "Nothing is playing right now.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (!isInSameVoiceChannel(interaction, session)) {
+      await interaction.reply({
+        content: "Join my voice channel first.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const position = interaction.options.getInteger("position", true);
+
+    if (!session.queue.length) {
+      await interaction.reply({
+        content: "There are no queued tracks to skip to.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (position < 1 || position > session.queue.length) {
+      await interaction.reply({
+        content: `Pick a position between 1 and ${session.queue.length}.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const [target] = session.queue.splice(position - 1, 1);
+    session.queue.unshift(target);
+    session.player.stop();
+    await interaction.reply(`Skipping to: **${target.title}**`);
+    return;
+  }
+
+  if (interaction.commandName !== "play") {
     return;
   }
 
@@ -132,6 +363,16 @@ client.on("interactionCreate", async (interaction) => {
   if (!voiceChannel) {
     await interaction.reply({
       content: "Join a voice channel first.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const existingSession = sessions.get(interaction.guildId);
+
+  if (existingSession && voiceChannel.id !== existingSession.voiceChannelId) {
+    await interaction.reply({
+      content: "Join my voice channel first.",
       ephemeral: true,
     });
     return;
@@ -149,8 +390,13 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    await playTrack(interaction, track, voiceChannel);
-    await interaction.editReply(`Now playing: **${track.title}**`);
+    const { position, started } = await addTrack(interaction, track, voiceChannel);
+
+    await interaction.editReply(
+      started
+        ? `Now playing: **${track.title}**`
+        : `Added to queue #${position}: **${track.title}**`,
+    );
   } catch (error) {
     console.error(error);
     await interaction.editReply("I could not play that track. Check the link or try another search.");

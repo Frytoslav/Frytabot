@@ -1,6 +1,6 @@
 # Frytabot
 
-A simple Discord bot that plays music with the `/play` command.
+A simple Discord bot that plays YouTube music with a per-server queue.
 
 ## Setup
 
@@ -37,4 +37,8 @@ A simple Discord bot that plays music with the `/play` command.
 
 ## Commands
 
-- `/play query:<link or search text>` - joins your voice channel and plays the found track.
+- `/play query:<link or search text>` - joins your voice channel and adds the found track to the queue.
+- `/queue` - shows the currently playing track and up to 10 queued tracks.
+- `/skip` - skips the current track.
+- `/skipto position:<number>` - skips to a queued track by position.
+- `/stop` - stops playback, clears the queue, and disconnects the bot.
