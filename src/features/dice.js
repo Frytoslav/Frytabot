@@ -61,7 +61,24 @@ async function handleDiceRoll(interaction) {
   await interaction.reply(formatDiceRoll(roll));
 }
 
+async function handleDiceMessage(message) {
+  if (message.author.bot || !message.content.startsWith("/r ")) {
+    return;
+  }
+
+  const notation = message.content.slice(3).trim();
+  const roll = rollDice(notation);
+
+  if (!roll) {
+    await message.reply(`Use dice notation like \`/r 2d6\`. Limits: ${MAX_DICE_COUNT} dice, ${MAX_DICE_SIDES} sides.`);
+    return;
+  }
+
+  await message.reply(formatDiceRoll(roll));
+}
+
 module.exports = {
+  handleDiceMessage,
   handleDiceRoll,
   rollDice,
 };

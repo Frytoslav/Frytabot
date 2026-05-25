@@ -1,4 +1,3 @@
-const { handleDiceRoll } = require("../features/dice");
 const { formatQueue, isInSameVoiceChannel } = require("../features/music/messages");
 const {
   addTrack,
@@ -17,9 +16,6 @@ async function handleInteraction(interaction) {
   switch (interaction.commandName) {
     case "queue":
       await handleQueue(interaction);
-      return;
-    case "r":
-      await handleDiceRoll(interaction);
       return;
     case "volume":
       await handleVolume(interaction);

@@ -14,18 +14,6 @@ const commands = [
     ],
   },
   {
-    name: "r",
-    description: "Rolls dice using NdM notation.",
-    options: [
-      {
-        name: "dice",
-        description: "Dice notation, for example 2d6.",
-        type: ApplicationCommandOptionType.String,
-        required: true,
-      },
-    ],
-  },
-  {
     name: "skip",
     description: "Skips the current track.",
   },
