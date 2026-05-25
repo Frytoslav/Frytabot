@@ -21,13 +21,16 @@ A simple Discord bot that plays YouTube music with a per-server queue.
 3. In Discord Developer Portal, enable these bot intents:
 
    - `Guilds`
+   - `Message Content`
    - `Guild Voice States`
 
 4. Invite the bot to your server with these permissions:
 
    - `applications.commands`
    - `Connect`
+   - `Send Messages`
    - `Speak`
+   - `View Channels`
 
 5. Start the bot:
 
@@ -38,7 +41,7 @@ A simple Discord bot that plays YouTube music with a per-server queue.
 ## Commands
 
 - `/play query:<link or search text>` - joins your voice channel and adds the found track to the queue.
-- `/r dice:<amount>d<sides>` - rolls dice, for example `2d6`.
+- `/r <amount>d<sides>` - quick text command for rolling dice, for example `/r 2d6`.
 - `/queue` - shows the currently playing track and up to 10 queued tracks.
 - `/volume level:<0-200>` - changes playback volume for the current and next tracks.
 - `/skip` - skips the current track.
